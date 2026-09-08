@@ -123,6 +123,7 @@ std::string ScriptApiEntity::luaentity_GetStaticdata(u16 id)
 	SCRIPTAPI_PRECHECKHEADER
 
 	int error_handler = PUSH_ERROR_HANDLER(L);
+	std::string ret;
 
 	// Get core.luaentities[id]
 	luaentity_get(L, id);
@@ -131,8 +132,8 @@ std::string ScriptApiEntity::luaentity_GetStaticdata(u16 id)
 	// Get get_staticdata function
 	lua_getfield(L, -1, "get_staticdata");
 	if (lua_isnil(L, -1)) {
-		lua_pop(L, 2); // Pop entity and  get_staticdata
-		return "";
+		lua_pop(L, 2); // Pop entity and get_staticdata
+		return ret;
 	}
 	luaL_checktype(L, -1, LUA_TFUNCTION);
 	lua_pushvalue(L, object); // self
@@ -140,12 +141,10 @@ std::string ScriptApiEntity::luaentity_GetStaticdata(u16 id)
 	setOriginFromTable(object);
 	PCALL_RES(lua_pcall(L, 1, 1, error_handler));
 
-	lua_remove(L, object);
-	lua_remove(L, error_handler);
+	ret = readParam<std::string>(L, -1, "");
 
-	auto s = readParam<std::string>(L, -1);
-	lua_pop(L, 1); // Pop static data
-	return s;
+	lua_pop(L, 2); // Pop entity and return value
+	return ret;
 }
 
 void ScriptApiEntity::logDeprecationForExistingProperties(lua_State *L, int index, const std::string &name)
