@@ -245,7 +245,7 @@ private:
 	VrPose m_head;
 	std::array<VrPose, 2> m_aim;
 	std::array<XrPosef, 2> m_aim_xr;
-	XrPosef m_head_xr;
+	XrPosef m_head_xr{{0, 0, 0, 1}, {0, 0, 0}};
 	bool m_centered = false;
 	v3f m_center;
 	f32 m_turn_deg = 0.0f;
@@ -253,7 +253,8 @@ private:
 	// UI panel
 	VrUiMode m_ui_mode = VrUiMode::Menu;
 	bool m_menu_panel_placed = false;
-	XrPosef m_menu_pose;
+	// Straight ahead until the head pose is known
+	XrPosef m_menu_pose{{0, 0, 0, 1}, {0, 0, -1.5f}};
 	f32 m_menu_width = 1.6f;
 	f32 m_hud_width = 1.5f;
 	f32 m_hud_distance = 1.4f;
@@ -299,7 +300,7 @@ private:
 	VrKeyboard m_kb;
 	bool m_kb_visible = false;
 	bool m_text_input_requested = false;
-	XrPosef m_kb_pose;
+	XrPosef m_kb_pose{{0, 0, 0, 1}, {0, -0.8f, -1.3f}};
 	v2f m_kb_size;
 	int m_kb_hover = -1, m_kb_pressed = -1;
 	f32 m_kb_repeat = 0.0f;
@@ -366,14 +367,24 @@ bool OpenXrSystem::init()
 	xrEnumerateSwapchainFormats(m_session, 0, &format_count, nullptr);
 	std::vector<int64_t> formats(format_count);
 	xrEnumerateSwapchainFormats(m_session, format_count, &format_count, formats.data());
-	// Luanti does not do linear lighting, so prefer a non-sRGB format
-	m_color_format = formats.empty() ? GL_RGBA8 : formats[0];
-	for (int64_t f : formats) {
-		if (f == GL_RGBA8) {
-			m_color_format = f;
-			break;
-		}
+	// The Quest compositor treats non-sRGB swapchains as linear, which makes
+	// Luanti's gamma-space colors look washed out. Use an sRGB swapchain and
+	// write the colors unchanged by disabling the sRGB encoding on write.
+	const char *gl_ext = (const char *)glGetString(GL_EXTENSIONS);
+	const bool srgb_write_control = gl_ext && strstr(gl_ext, "GL_EXT_sRGB_write_control");
+	auto has_format = [&](int64_t format) {
+		return std::find(formats.begin(), formats.end(), format) != formats.end();
+	};
+	if (srgb_write_control && has_format(GL_SRGB8_ALPHA8)) {
+		m_color_format = GL_SRGB8_ALPHA8;
+		glDisable(GL_FRAMEBUFFER_SRGB_EXT);
+	} else if (has_format(GL_RGBA8)) {
+		m_color_format = GL_RGBA8;
+	} else {
+		m_color_format = formats.empty() ? GL_RGBA8 : formats[0];
 	}
+	infostream << "VR: swapchain format 0x" << std::hex << m_color_format
+			<< std::dec << std::endl;
 
 	m_fbTex2DMs = (PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC)
 			eglGetProcAddress("glFramebufferTexture2DMultisampleEXT");
