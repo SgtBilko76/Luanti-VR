@@ -226,6 +226,7 @@ private:
 	bool m_running = false;
 	bool m_should_quit = false;
 	bool m_has_perf_settings = false;
+	bool m_has_bd_controllers = false;
 
 	int64_t m_color_format = 0;
 	std::array<Swapchain, 2> m_eye_sc;
@@ -481,6 +482,9 @@ bool OpenXrSystem::createInstance()
 		if (!strcmp(ext.extensionName, XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME)) {
 			extensions.push_back(XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME);
 			m_has_perf_settings = true;
+		} else if (!strcmp(ext.extensionName, XR_BD_CONTROLLER_INTERACTION_EXTENSION_NAME)) {
+			extensions.push_back(XR_BD_CONTROLLER_INTERACTION_EXTENSION_NAME);
+			m_has_bd_controllers = true;
 		}
 	}
 
@@ -612,14 +616,32 @@ bool OpenXrSystem::createActions()
 	bind(m_act_haptic, "/user/hand/left/output/haptic");
 	bind(m_act_haptic, "/user/hand/right/output/haptic");
 
-	XrPath profile;
-	xrStringToPath(m_instance, "/interaction_profiles/oculus/touch_controller", &profile);
-	XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-	suggested.interactionProfile = profile;
-	suggested.countSuggestedBindings = bindings.size();
-	suggested.suggestedBindings = bindings.data();
-	if (!XR_CHECK(xrSuggestInteractionProfileBindings(m_instance, &suggested)))
+	// PICO controllers have the same layout as the Touch controllers
+	std::vector<const char *> profiles = {"/interaction_profiles/oculus/touch_controller"};
+	if (m_has_bd_controllers) {
+		profiles.push_back("/interaction_profiles/bytedance/pico4_controller");
+		profiles.push_back("/interaction_profiles/bytedance/pico4s_controller");
+		profiles.push_back("/interaction_profiles/bytedance/pico_neo3_controller");
+	}
+	bool any_profile = false;
+	for (const char *name : profiles) {
+		XrPath profile;
+		if (XR_FAILED(xrStringToPath(m_instance, name, &profile)))
+			continue;
+		XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+		suggested.interactionProfile = profile;
+		suggested.countSuggestedBindings = bindings.size();
+		suggested.suggestedBindings = bindings.data();
+		// Not every runtime knows every profile
+		if (XR_SUCCEEDED(xrSuggestInteractionProfileBindings(m_instance, &suggested)))
+			any_profile = true;
+		else
+			infostream << "VR: interaction profile not supported: " << name << std::endl;
+	}
+	if (!any_profile) {
+		errorstream << "VR: no supported controller interaction profile" << std::endl;
 		return false;
+	}
 
 	for (int hand : {LEFT, RIGHT}) {
 		XrActionSpaceCreateInfo info{XR_TYPE_ACTION_SPACE_CREATE_INFO};

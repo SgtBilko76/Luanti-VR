@@ -35,6 +35,10 @@
 		<meta-data
 			android:name="com.oculus.supportedDevices"
 			android:value="quest2|questpro|quest3|quest3s" />
+		<!-- PICO: launch as immersive VR app -->
+		<meta-data
+			android:name="pvr.app.type"
+			android:value="vr" />
 
 		<activity
 			android:name=".MainActivity"
@@ -62,6 +66,8 @@
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
 				<category android:name="com.oculus.intent.category.VR" />
+				<category android:name="com.picovr.intent.category.VR" />
+				<category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
 			</intent-filter>
 		</activity>
 
