@@ -83,5 +83,6 @@ set(client_SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/shadows/shadowsScreenQuad.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/vr/vr.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/vr/vr_pipeline.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/vr/vr_keyboard.cpp
 	PARENT_SCOPE
 )

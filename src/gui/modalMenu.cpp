@@ -8,6 +8,7 @@
 #include <IGUIEditBox.h>
 #include "client/renderingengine.h"
 #include "modalMenu.h"
+#include "client/vr/vr.h"
 #include "gui/guiInventoryList.h"
 #include "porting.h"
 #include "settings.h"
@@ -233,8 +234,14 @@ void GUIModalMenu::leave()
 bool GUIModalMenu::preprocessEvent(const SEvent &event)
 {
 #ifdef __ANDROID__
+	// Android dialogs can't be shown in VR, use the regular GUI there
+	bool use_android_dialogs = true;
+#if USE_OPENXR
+	use_android_dialogs = !g_vr;
+#endif
+
 	// display software keyboard when clicking edit boxes
-	if (event.EventType == EET_MOUSE_INPUT_EVENT &&
+	if (use_android_dialogs && event.EventType == EET_MOUSE_INPUT_EVENT &&
 			((event.MouseInput.Event == EMIE_LMOUSE_PRESSED_DOWN &&
 			!porting::hasPhysicalKeyboardAndroid()) ||
 			event.MouseInput.Event == EMIE_LMOUSE_DOUBLE_CLICK)) {
@@ -272,7 +279,7 @@ bool GUIModalMenu::preprocessEvent(const SEvent &event)
 		}
 	}
 
-	if (event.EventType == EET_GUI_EVENT) {
+	if (use_android_dialogs && event.EventType == EET_GUI_EVENT) {
 		if (event.GUIEvent.EventType == gui::EGET_LISTBOX_OPENED) {
 			gui::IGUIComboBox *dropdown = (gui::IGUIComboBox *) event.GUIEvent.Caller;
 

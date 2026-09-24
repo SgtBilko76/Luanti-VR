@@ -8,6 +8,7 @@
 
 #include "util/numeric.h"
 #include "porting.h"
+#include "client/vr/vr.h"
 #include "porting_android.h"
 #include "threading/thread.h"
 #include "config.h"
@@ -310,6 +311,12 @@ std::string getLanguageAndroid()
 
 bool hasPhysicalKeyboardAndroid()
 {
+#if USE_OPENXR
+	// Android dialogs are invisible in VR, text is entered on the VR keyboard
+	if (g_vr)
+		return true;
+#endif
+
 	jmethodID hasPhysicalKeyboard = jnienv->GetMethodID(activityClass,
 			"hasPhysicalKeyboard", "()Z");
 

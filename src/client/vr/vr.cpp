@@ -13,6 +13,10 @@
 #include <IEventReceiver.h>
 #include <Keycodes.h>
 #include "client/keycode.h"
+#include "client/fontengine.h"
+#include "vr_keyboard.h"
+#include <IGUIEnvironment.h>
+#include <IGUIElement.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -169,6 +173,8 @@ public:
 	VrPose getHeadPose() const override { return m_head; }
 	VrPose getAimPose() const override { return m_aim[RIGHT]; }
 
+	void setTextInputRequested(bool requested) override { m_text_input_requested = requested; }
+
 	v3f toWorldOffset(v3f tracking_pos) const override;
 	VrQuat toWorldOrientation(const VrQuat &tracking_rot) const override;
 	v2f getLookYawPitch() const override;
@@ -194,6 +200,13 @@ private:
 	void releaseAllInput();
 	void updatePointer();
 	void drawPointer();
+	bool hitQuad(const XrPosef &pose, v2f size, v2f &uv, f32 &dist) const;
+	void haptic(f32 amplitude, f32 seconds);
+
+	void updateKeyboard();
+	void placeKeyboard();
+	void drawKeyboard();
+	void pressKey(int index);
 
 	void postGamepadButton(GamepadButton button, bool down);
 	void postGamepadAxis(GamepadAxis axis, f32 value);
@@ -273,11 +286,25 @@ private:
 	f32 m_hotbar_repeat = 0.0f;
 	f32 m_scroll_timer = 0.0f;
 	u64 m_last_update_ms = 0;
+	f32 m_last_dtime = 0.0f;
 
 	// Pointer
 	bool m_pointer_valid = false;
 	v2s32 m_pointer_pos;
 	bool m_lmb_down = false, m_rmb_down = false;
+	bool m_pointer_on_kb = false;
+
+	// Virtual keyboard, shown below the menu panel while text is edited
+	Swapchain m_kb_sc;
+	VrKeyboard m_kb;
+	bool m_kb_visible = false;
+	bool m_text_input_requested = false;
+	XrPosef m_kb_pose;
+	v2f m_kb_size;
+	int m_kb_hover = -1, m_kb_pressed = -1;
+	f32 m_kb_repeat = 0.0f;
+	// Only compared, never dereferenced
+	const void *m_kb_dismissed_focus = nullptr;
 };
 
 OpenXrSystem::~OpenXrSystem()
@@ -291,6 +318,7 @@ OpenXrSystem::~OpenXrSystem()
 		for (auto &sc : m_eye_sc)
 			destroySwapchain(sc);
 		destroySwapchain(m_ui_sc);
+		destroySwapchain(m_kb_sc);
 		if (m_dummy_fbo)
 			glDeleteFramebuffers(1, &m_dummy_fbo);
 	}
@@ -372,6 +400,10 @@ bool OpenXrSystem::init()
 	u32 msaa = m_msaa;
 	m_msaa = 0;
 	bool ok = createSwapchain(m_ui_sc, ui_size, true);
+	if (ok) {
+		core::dimension2du kb_size(ui_size.Width, ui_size.Width / m_kb.getAspect());
+		ok = createSwapchain(m_kb_sc, kb_size, false);
+	}
 	m_msaa = msaa;
 	if (!ok)
 		return false;
@@ -839,6 +871,7 @@ bool OpenXrSystem::onEndScene()
 	m_frame_active = false;
 
 	if (m_ui_sc.is_acquired) {
+		drawKeyboard();
 		drawPointer();
 		release(m_ui_sc);
 	}
@@ -846,6 +879,7 @@ bool OpenXrSystem::onEndScene()
 	std::array<XrCompositionLayerProjectionView, 2> proj_views;
 	XrCompositionLayerProjection proj{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
 	XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+	XrCompositionLayerQuad kb_quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 	std::vector<XrCompositionLayerBaseHeader *> layers;
 
 	if (m_should_render && m_eyes_done == 3) {
@@ -884,6 +918,18 @@ bool OpenXrSystem::onEndScene()
 			quad.size = {m_menu_width, m_menu_width * aspect};
 		}
 		layers.push_back((XrCompositionLayerBaseHeader *)&quad);
+
+		if (m_kb_visible) {
+			kb_quad.layerFlags = quad.layerFlags;
+			kb_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+			kb_quad.subImage.swapchain = m_kb_sc.handle;
+			kb_quad.subImage.imageRect.offset = {0, 0};
+			kb_quad.subImage.imageRect.extent = {(s32)m_kb_sc.size.Width, (s32)m_kb_sc.size.Height};
+			kb_quad.space = m_app_space;
+			kb_quad.pose = m_kb_pose;
+			kb_quad.size = {m_kb_size.X, m_kb_size.Y};
+			layers.push_back((XrCompositionLayerBaseHeader *)&kb_quad);
+		}
 	}
 
 	XrFrameEndInfo end_info{XR_TYPE_FRAME_END_INFO};
@@ -974,42 +1020,59 @@ void OpenXrSystem::placeMenuPanel()
 	m_menu_panel_placed = true;
 }
 
-void OpenXrSystem::updatePointer()
+bool OpenXrSystem::hitQuad(const XrPosef &pose, v2f size, v2f &uv, f32 &dist) const
 {
-	m_pointer_valid = false;
-	if (m_ui_mode != VrUiMode::Menu || !m_menu_panel_placed || !m_aim[RIGHT].valid)
-		return;
-
 	// Work in OpenXR tracking space
 	const XrPosef &aim = m_aim_xr[RIGHT];
 	VrQuat aim_q{aim.orientation.x, aim.orientation.y, aim.orientation.z, aim.orientation.w};
 	v3f origin(aim.position.x, aim.position.y, aim.position.z);
 	v3f dir = aim_q.rotate(v3f(0, 0, -1));
 
-	const XrPosef &panel = m_menu_pose;
-	VrQuat panel_q{panel.orientation.x, panel.orientation.y, panel.orientation.z, panel.orientation.w};
-	v3f center(panel.position.x, panel.position.y, panel.position.z);
-	v3f normal = panel_q.rotate(v3f(0, 0, 1));
+	VrQuat quad_q{pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w};
+	v3f center(pose.position.x, pose.position.y, pose.position.z);
+	v3f normal = quad_q.rotate(v3f(0, 0, 1));
 
 	f32 denom = dir.dotProduct(normal);
 	if (denom > -1e-4f)
-		return;
-	f32 t = (center - origin).dotProduct(normal) / denom;
-	if (t <= 0)
-		return;
-	v3f local = conjugate(panel_q).rotate(origin + dir * t - center);
+		return false;
+	dist = (center - origin).dotProduct(normal) / denom;
+	if (dist <= 0)
+		return false;
+	v3f local = conjugate(quad_q).rotate(origin + dir * dist - center);
+	uv = v2f(local.X / size.X + 0.5f, 0.5f - local.Y / size.Y);
+	return true;
+}
 
-	const f32 width = m_menu_width;
-	const f32 height = m_menu_width * m_ui_sc.size.Height / m_ui_sc.size.Width;
-	f32 u = local.X / width + 0.5f;
-	f32 v = 0.5f - local.Y / height;
-	if (u < -0.05f || u > 1.05f || v < -0.05f || v > 1.05f)
+void OpenXrSystem::updatePointer()
+{
+	m_pointer_valid = false;
+	m_pointer_on_kb = false;
+	m_kb_hover = -1;
+	if (m_ui_mode != VrUiMode::Menu || !m_menu_panel_placed || !m_aim[RIGHT].valid)
+		return;
+
+	v2f uv;
+	f32 dist, kb_dist = 1e9f;
+	v2f kb_uv;
+	bool kb_hit = m_kb_visible && hitQuad(m_kb_pose, m_kb_size, kb_uv, kb_dist) &&
+			kb_uv.X >= 0 && kb_uv.X <= 1 && kb_uv.Y >= 0 && kb_uv.Y <= 1;
+
+	const v2f panel_size(m_menu_width, m_menu_width * m_ui_sc.size.Height / m_ui_sc.size.Width);
+	bool panel_hit = hitQuad(m_menu_pose, panel_size, uv, dist) &&
+			uv.X >= -0.05f && uv.X <= 1.05f && uv.Y >= -0.05f && uv.Y <= 1.05f;
+
+	if (kb_hit && (!panel_hit || kb_dist < dist)) {
+		m_pointer_on_kb = true;
+		m_kb_hover = m_kb.keyAt(kb_uv);
+		return;
+	}
+	if (!panel_hit)
 		return;
 
 	m_pointer_valid = true;
 	m_pointer_pos = v2s32(
-			rangelim(u, 0.0f, 1.0f) * (m_ui_sc.size.Width - 1),
-			rangelim(v, 0.0f, 1.0f) * (m_ui_sc.size.Height - 1));
+			rangelim(uv.X, 0.0f, 1.0f) * (m_ui_sc.size.Width - 1),
+			rangelim(uv.Y, 0.0f, 1.0f) * (m_ui_sc.size.Height - 1));
 }
 
 void OpenXrSystem::drawPointer()
@@ -1024,6 +1087,115 @@ void OpenXrSystem::drawPointer()
 	m_driver->draw2DRectangle(m_lmb_down ? video::SColor(255, 80, 200, 255) :
 			video::SColor(255, 255, 255, 255),
 			core::rect<s32>(p.X - r, p.Y - r, p.X + r, p.Y + r));
+}
+
+/* Virtual keyboard */
+
+void OpenXrSystem::updateKeyboard()
+{
+	bool wanted = false;
+	const void *focus_id = nullptr;
+	if (m_ui_mode == VrUiMode::Menu) {
+		gui::IGUIElement *focus = m_device->getGUIEnvironment()->getFocus();
+		if (focus && focus->getType() == gui::EGUIET_EDIT_BOX && focus->isEnabled())
+			focus_id = focus;
+		else if (m_text_input_requested)
+			focus_id = &m_text_input_requested;
+		wanted = focus_id != nullptr;
+	}
+
+	// "Hide" keeps the keyboard closed until another field gets focus
+	if (focus_id != m_kb_dismissed_focus)
+		m_kb_dismissed_focus = nullptr;
+	wanted = wanted && !m_kb_dismissed_focus;
+
+	if (wanted && !m_kb_visible)
+		placeKeyboard();
+	if (!wanted)
+		m_kb_pressed = -1;
+	m_kb_visible = wanted;
+}
+
+void OpenXrSystem::placeKeyboard()
+{
+	// Tilted like a desk keyboard, just below the menu panel
+	const f32 tilt = 30.0f * core::DEGTORAD;
+	const f32 gap = 0.04f;
+	const f32 panel_h = m_menu_width * m_ui_sc.size.Height / m_ui_sc.size.Width;
+	m_kb_size.X = m_menu_width * 0.85f;
+	m_kb_size.Y = m_kb_size.X / m_kb.getAspect();
+
+	const XrPosef &panel = m_menu_pose;
+	VrQuat panel_q{panel.orientation.x, panel.orientation.y, panel.orientation.z, panel.orientation.w};
+	v3f offset(0,
+			-(panel_h / 2 + gap) - m_kb_size.Y / 2 * std::cos(tilt),
+			m_kb_size.Y / 2 * std::sin(tilt));
+	v3f pos = v3f(panel.position.x, panel.position.y, panel.position.z) + panel_q.rotate(offset);
+	VrQuat rot = panel_q * VrQuat::fromAxisAngle(v3f(1, 0, 0), -tilt);
+
+	m_kb_pose.position = {pos.X, pos.Y, pos.Z};
+	m_kb_pose.orientation = {rot.x, rot.y, rot.z, rot.w};
+}
+
+void OpenXrSystem::drawKeyboard()
+{
+	if (!m_kb_visible || !acquire(m_kb_sc))
+		return;
+	m_driver->setScreenOverride(m_kb_sc.fbos[m_kb_sc.acquired], m_kb_sc.size);
+	m_driver->setRenderTargetEx(nullptr, video::ECBF_COLOR, video::SColor(0, 0, 0, 0));
+	gui::IGUIFont *font = g_fontengine ? g_fontengine->getFont(28, FM_Standard) : nullptr;
+	m_kb.draw(m_driver, font, m_kb_sc.size, m_kb_hover, m_kb_pressed);
+	release(m_kb_sc);
+	beginUi();
+}
+
+void OpenXrSystem::pressKey(int index)
+{
+	VrKeyboard::Output out = m_kb.press(index);
+	haptic(0.25f, 0.015f);
+
+	switch (out.type) {
+	case VrKeyboard::Output::TEXT: {
+		core::stringw str(out.text.c_str());
+		SEvent e{};
+		e.EventType = EET_STRING_INPUT_EVENT;
+		e.StringInput.Str = &str;
+		m_device->postEventFromUser(e);
+		break;
+	}
+	case VrKeyboard::Output::KEY: {
+		SEvent e{};
+		e.EventType = EET_KEY_INPUT_EVENT;
+		e.KeyInput.Key = out.key;
+		e.KeyInput.PressedDown = true;
+		m_device->postEventFromUser(e);
+		e.KeyInput.PressedDown = false;
+		m_device->postEventFromUser(e);
+		break;
+	}
+	case VrKeyboard::Output::CLOSE: {
+		gui::IGUIElement *focus = m_device->getGUIEnvironment()->getFocus();
+		m_kb_dismissed_focus = (focus && focus->getType() == gui::EGUIET_EDIT_BOX) ?
+				(const void *)focus : (const void *)&m_text_input_requested;
+		m_kb_visible = false;
+		m_kb_pressed = -1;
+		break;
+	}
+	case VrKeyboard::Output::NONE:
+		break;
+	}
+}
+
+void OpenXrSystem::haptic(f32 amplitude, f32 seconds)
+{
+	XrHapticActionInfo info{XR_TYPE_HAPTIC_ACTION_INFO};
+	info.action = m_act_haptic;
+	info.subactionPath = m_hand_paths[RIGHT];
+	XrHapticVibration vib{XR_TYPE_HAPTIC_VIBRATION};
+	vib.amplitude = amplitude;
+	vib.duration = (XrDuration)(seconds * 1e9);
+	vib.frequency = XR_FREQUENCY_UNSPECIFIED;
+	xrApplyHapticFeedback(m_session, &info, (const XrHapticBaseHeader *)&vib);
 }
 
 /* Tracking to world */
@@ -1104,6 +1276,7 @@ void OpenXrSystem::update()
 	if (m_display_time)
 		locate(m_display_time);
 
+	updateKeyboard();
 	processInput();
 }
 
@@ -1112,6 +1285,7 @@ void OpenXrSystem::processInput()
 	u64 now = m_device->getTimer()->getRealTime();
 	f32 dtime = m_last_update_ms ? (now - m_last_update_ms) / 1000.0f : 0.0f;
 	m_last_update_ms = now;
+	m_last_dtime = dtime;
 	m_hotbar_repeat = std::max(0.0f, m_hotbar_repeat - dtime);
 	m_scroll_timer = std::max(0.0f, m_scroll_timer - dtime);
 
@@ -1140,6 +1314,7 @@ void OpenXrSystem::processHudInput()
 	postGamepadButton(GamepadButton::START, m_menu_btn); // Menu: pause
 	postGamepadButton(GamepadButton::DPAD_LEFT, l.stick_click); // toggle fly
 	postGamepadButton(GamepadButton::DPAD_DOWN, l.grip > 0.8f); // drop item
+	postGamepadButton(GamepadButton::RIGHT_STICK, r.stick_click); // chat
 
 	// Snap turning with the right stick
 	const f32 turn_step = g_settings->getFloat("vr_snap_turn_angle");
@@ -1178,7 +1353,27 @@ void OpenXrSystem::processMenuInput()
 		postMouse(EMIE_MOUSE_MOVED);
 
 	// Trigger with hysteresis
-	bool lmb = m_lmb_down ? r.trigger > 0.4f : r.trigger > 0.7f;
+	const bool trigger = (m_lmb_down || m_kb_pressed >= 0) ? r.trigger > 0.4f : r.trigger > 0.7f;
+
+	// Keyboard keys, with auto-repeat for some keys
+	if (m_kb_pressed >= 0) {
+		if (!trigger || m_kb_hover != m_kb_pressed) {
+			m_kb_pressed = -1;
+		} else if (m_kb.isRepeatable(m_kb_pressed)) {
+			m_kb_repeat -= m_last_dtime;
+			if (m_kb_repeat <= 0.0f) {
+				pressKey(m_kb_pressed);
+				m_kb_repeat = 0.06f;
+			}
+		}
+	} else if (trigger && !m_lmb_down && m_pointer_on_kb && r.trigger > 0.7f &&
+			pr.trigger <= 0.7f && m_kb_hover >= 0) {
+		m_kb_pressed = m_kb_hover;
+		m_kb_repeat = 0.45f;
+		pressKey(m_kb_pressed);
+	}
+
+	bool lmb = trigger && m_kb_pressed < 0 && (m_lmb_down || !m_pointer_on_kb);
 	if (lmb != m_lmb_down && (m_pointer_valid || !lmb)) {
 		m_lmb_down = lmb;
 		postMouse(lmb ? EMIE_LMOUSE_PRESSED_DOWN : EMIE_LMOUSE_LEFT_UP);
@@ -1289,6 +1484,8 @@ std::unique_ptr<VrSystem> VrSystem::create(IrrlichtDevice *device)
 		errorstream << "VR: initialization failed, continuing without VR" << std::endl;
 		return nullptr;
 	}
+	// The Android on-screen keyboard can't be used in VR, we have our own
+	SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, "0");
 	infostream << "VR: initialized" << std::endl;
 	return vr;
 }

@@ -619,6 +619,8 @@ void set_default_settings()
 	settings->setDefault("vr_hud_width", "1.5");
 	settings->setDefault("vr_hud_distance", "1.4");
 	settings->setDefault("vr_snap_turn_angle", "30");
+	// Right thumbstick click opens the chat
+	settings->setDefault("keymap_chat", "SYSTEM_SCANCODE_23|GAMEPAD_BUTTON_8");
 	// Controllers are used as gamepad and mouse, there is no touchscreen
 	settings->setDefault("touch_controls", "false");
 	settings->setDefault("touch_gui", "false");

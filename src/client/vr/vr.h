@@ -80,6 +80,8 @@ public:
 	virtual void beginUi() = 0;
 
 	virtual void setUiMode(VrUiMode mode) = 0;
+	// Shows the keyboard for text input that isn't an edit box (chat console)
+	virtual void setTextInputRequested(bool requested) = 0;
 	virtual VrUiMode getUiMode() const = 0;
 
 	// Combined vertical and horizontal FOV of both eyes (radians)

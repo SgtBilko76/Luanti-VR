@@ -594,8 +594,12 @@ void Game::run()
 		updateProfilerGraphs(&graph);
 
 #if USE_OPENXR
-		if (g_vr)
-			g_vr->setUiMode(isMenuActive() ? VrUiMode::Menu : VrUiMode::Hud);
+		if (g_vr) {
+			// The chat console needs the pointer and the keyboard as well
+			bool chat_open = guienv->hasFocus(gui_chat_console.get());
+			g_vr->setUiMode(isMenuActive() || chat_open ? VrUiMode::Menu : VrUiMode::Hud);
+			g_vr->setTextInputRequested(chat_open);
+		}
 #endif
 
 		if (m_does_lost_focus_pause_game && !device->isWindowFocused() && !isVRRunning() &&
@@ -629,6 +633,7 @@ void Game::shutdown()
 #if USE_OPENXR
 	if (g_vr) {
 		g_vr->setUiMode(VrUiMode::Menu);
+		g_vr->setTextInputRequested(false);
 		g_vr->setPointerRay({}, false);
 	}
 #endif
