@@ -7,6 +7,35 @@
 </div>
 <br>
 
+## Luanti VR (Meta Quest / PICO)
+
+This fork runs Luanti standalone in VR on **Meta Quest** (2, 3, 3S, Pro) and **PICO** (4, 4 Ultra, Neo 3) headsets, using OpenXR. One APK works on both. Download it from the [releases](https://github.com/SgtBilko76/Luanti-VR/releases). The VR port lives on the `quest-vr` branch.
+
+- Stereo rendering with head tracking, controller aiming with a laser ray
+- Menus, inventory and chat on a floating panel with a laser pointer
+- VR keyboard for world names, chat and server addresses
+- Smooth movement with the left stick, snap turning with the right stick
+
+| Input | In game | In menus |
+|---|---|---|
+| Left stick | Walk | Scroll |
+| Right stick left/right | Snap turn | |
+| Right stick up/down | Hotbar slot | Scroll |
+| Right trigger | Dig / attack | Click |
+| Left trigger / right grip | Place / use | Right click (grip) |
+| A / B | Jump / sneak | – / Close menu |
+| X / Y | Sprint / inventory | – / Close menu |
+| Left stick click | Toggle fly | |
+| Right stick click | Chat | |
+| Left grip | Drop item | |
+| Menu button | Pause menu | Close menu |
+
+PICO support is untested on real hardware so far and needs PICO OS 5.9.0 or newer. Settings starting with `vr_` in `minetest.conf` adjust resolution, MSAA, panel size and snap turn angle.
+
+Build: `cd android && ./gradlew assembleRelease` (OpenXR is enabled with `-DENABLE_OPENXR=1`, see `android/native/build.gradle`). The VR code is in `src/client/vr/`.
+
+---
+
 Luanti is a free open-source voxel game engine with easy modding and game creation.
 
 Copyright (C) 2010-2026 Perttu Ahola <celeron55@gmail.com>
