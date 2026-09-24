@@ -17,6 +17,7 @@
 #include "settings.h"
 
 #include <jni.h>
+#include <vector>
 #define SDL_MAIN_HANDLED 1
 #include <SDL.h>
 
@@ -47,10 +48,15 @@ extern "C" int SDL_Main(int _argc, char *_argv[])
 {
 	Thread::setName("Main");
 
-	char *argv[] = {strdup(PROJECT_NAME), strdup("--verbose"), nullptr};
-	int retval = main(ARRLEN(argv) - 1, argv);
-	free(argv[0]);
-	free(argv[1]);
+	// _argv[0] is the program name, the rest comes from GameActivity.getArguments()
+	std::vector<char *> argv = {strdup(PROJECT_NAME), strdup("--verbose")};
+	for (int i = 1; i < _argc; i++)
+		argv.push_back(strdup(_argv[i]));
+	int argc = argv.size();
+	argv.push_back(nullptr);
+	int retval = main(argc, argv.data());
+	for (char *arg : argv)
+		free(arg);
 
 	porting::cleanupAndroid();
 	infostream << "Shutting down." << std::endl;

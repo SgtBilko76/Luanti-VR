@@ -624,6 +624,9 @@ void set_default_settings()
 	// Controllers are used as gamepad and mouse, there is no touchscreen
 	settings->setDefault("touch_controls", "false");
 	settings->setDefault("touch_gui", "false");
+	// The OpenXR runtime paces the frames to the display refresh rate
+	settings->setDefault("fps_max", "1000");
+	settings->setDefault("fps_max_unfocused", "1000");
 	// Moving the camera without head movement causes motion sickness
 	settings->setDefault("view_bobbing_amount", "0");
 	settings->setDefault("fall_bobbing_amount", "0");

@@ -64,6 +64,14 @@ public class GameActivity extends SDLActivity {
 		return "SDL_Main";
 	}
 
+	// For development: extra command line arguments, e.g.
+	// adb shell am start -n net.minetest.minetest/.MainActivity --esa args --go,--worldname,world
+	@Override
+	protected String[] getArguments() {
+		String[] args = getIntent().getStringArrayExtra("args");
+		return args != null ? args : new String[0];
+	}
+
 	@Override
 	protected String[] getLibraries() {
 		return new String[] {

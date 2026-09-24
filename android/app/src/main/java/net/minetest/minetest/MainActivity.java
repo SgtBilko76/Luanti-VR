@@ -138,6 +138,10 @@ public class MainActivity extends AppCompatActivity {
 		sharedPreferences.edit().putInt(TAG_VERSION_CODE, versionCode).apply();
 		Intent intent = new Intent(this, GameActivity.class);
 		intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+		// Forward development command line arguments (see GameActivity.getArguments)
+		String[] args = getIntent().getStringArrayExtra("args");
+		if (args != null)
+			intent.putExtra("args", args);
 		startActivity(intent);
 	}
 

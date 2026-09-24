@@ -189,6 +189,7 @@ private:
 	void release(Swapchain &sc);
 
 	void pollEvents();
+	void requestPerformanceLevel();
 	void handleSessionState(XrSessionState state);
 	void locate(XrTime time);
 	void recenter(bool full);
@@ -224,6 +225,7 @@ private:
 	XrSessionState m_state = XR_SESSION_STATE_UNKNOWN;
 	bool m_running = false;
 	bool m_should_quit = false;
+	bool m_has_perf_settings = false;
 
 	int64_t m_color_format = 0;
 	std::array<Swapchain, 2> m_eye_sc;
@@ -465,10 +467,22 @@ bool OpenXrSystem::createInstance()
 			return false;
 	}
 
-	const char *extensions[] = {
+	std::vector<const char *> extensions = {
 		XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME,
 		XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME,
 	};
+
+	// Optional extensions
+	u32 ext_count = 0;
+	xrEnumerateInstanceExtensionProperties(nullptr, 0, &ext_count, nullptr);
+	std::vector<XrExtensionProperties> available(ext_count, {XR_TYPE_EXTENSION_PROPERTIES});
+	xrEnumerateInstanceExtensionProperties(nullptr, ext_count, &ext_count, available.data());
+	for (const auto &ext : available) {
+		if (!strcmp(ext.extensionName, XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME)) {
+			extensions.push_back(XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME);
+			m_has_perf_settings = true;
+		}
+	}
 
 	XrInstanceCreateInfoAndroidKHR android_info{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
 	android_info.applicationVM = vm;
@@ -481,8 +495,8 @@ bool OpenXrSystem::createInstance()
 	strncpy(info.applicationInfo.engineName, "Luanti", XR_MAX_ENGINE_NAME_SIZE - 1);
 	info.applicationInfo.engineVersion = 1;
 	info.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
-	info.enabledExtensionCount = ARRLEN(extensions);
-	info.enabledExtensionNames = extensions;
+	info.enabledExtensionCount = extensions.size();
+	info.enabledExtensionNames = extensions.data();
 
 	if (!XR_CHECK(xrCreateInstance(&info, &m_instance)))
 		return false;
@@ -749,8 +763,10 @@ void OpenXrSystem::handleSessionState(XrSessionState state)
 	case XR_SESSION_STATE_READY: {
 		XrSessionBeginInfo info{XR_TYPE_SESSION_BEGIN_INFO};
 		info.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-		if (XR_CHECK(xrBeginSession(m_session, &info)))
+		if (XR_CHECK(xrBeginSession(m_session, &info))) {
 			m_running = true;
+			requestPerformanceLevel();
+		}
 		break;
 	}
 	case XR_SESSION_STATE_STOPPING:
@@ -766,6 +782,22 @@ void OpenXrSystem::handleSessionState(XrSessionState state)
 	default:
 		break;
 	}
+}
+
+void OpenXrSystem::requestPerformanceLevel()
+{
+	// Luanti is demanding for a mobile chip; ask for the highest clocks
+	// the headset can sustain without overheating.
+	if (!m_has_perf_settings)
+		return;
+	PFN_xrPerfSettingsSetPerformanceLevelEXT setLevel = nullptr;
+	if (XR_FAILED(xrGetInstanceProcAddr(m_instance, "xrPerfSettingsSetPerformanceLevelEXT",
+			(PFN_xrVoidFunction *)&setLevel)) || !setLevel)
+		return;
+	XR_CHECK(setLevel(m_session, XR_PERF_SETTINGS_DOMAIN_CPU_EXT,
+			XR_PERF_SETTINGS_LEVEL_SUSTAINED_HIGH_EXT));
+	XR_CHECK(setLevel(m_session, XR_PERF_SETTINGS_DOMAIN_GPU_EXT,
+			XR_PERF_SETTINGS_LEVEL_SUSTAINED_HIGH_EXT));
 }
 
 void OpenXrSystem::locate(XrTime time)
