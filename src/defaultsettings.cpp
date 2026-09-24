@@ -624,6 +624,10 @@ void set_default_settings()
 	// Controllers are used as gamepad and mouse, there is no touchscreen
 	settings->setDefault("touch_controls", "false");
 	settings->setDefault("touch_gui", "false");
+	// No debug overlay in VR, not even in debug builds. The GL debug context
+	// costs performance.
+	settings->setDefault("show_debug", "false");
+	settings->setDefault("opengl_debug", "false");
 	// The OpenXR runtime paces the frames to the display refresh rate
 	settings->setDefault("fps_max", "1000");
 	settings->setDefault("fps_max_unfocused", "1000");
