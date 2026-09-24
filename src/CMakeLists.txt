@@ -138,6 +138,19 @@ if(BUILD_CLIENT)
 	find_package(Freetype REQUIRED)
 endif()
 
+# OpenXR (VR headsets). Only standalone Android headsets are supported for now.
+option(ENABLE_OPENXR "Enable OpenXR VR support (Android only)" FALSE)
+set(USE_OPENXR FALSE)
+
+if(BUILD_CLIENT AND ENABLE_OPENXR)
+	if(NOT ANDROID)
+		message(FATAL_ERROR "OpenXR support is currently only available on Android")
+	endif()
+	find_package(OpenXR REQUIRED CONFIG)
+	set(USE_OPENXR TRUE)
+	message(STATUS "OpenXR enabled.")
+endif()
+
 option(ENABLE_CURSES "Enable ncurses console" ${BUILD_SERVER})
 set(USE_CURSES FALSE)
 
@@ -733,6 +746,9 @@ if(BUILD_CLIENT)
 		"$<$<PLATFORM_ID:Android>:${SDL2_LIBRARIES}>"
 	)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE "MT_BUILDTARGET=1")
+	if(USE_OPENXR)
+		target_link_libraries(${PROJECT_NAME} OpenXR::openxr_loader EGL GLESv3)
+	endif()
 	if(NOT USE_LUAJIT)
 		set_target_properties(${PROJECT_NAME} PROPERTIES
 			# This is necessary for dynamic Lua modules

@@ -607,4 +607,23 @@ void set_default_settings()
 	}
 	// Tablets >= 6.0 use non-Android defaults for these settings
 #endif
+
+#if USE_OPENXR
+	settings->setDefault("enable_vr", "true");
+	settings->setDefault("vr_resolution_scale", "0.75");
+	settings->setDefault("vr_msaa", "4");
+	settings->setDefault("vr_ui_width", "1280");
+	settings->setDefault("vr_ui_height", "800");
+	settings->setDefault("vr_menu_width", "1.6");
+	settings->setDefault("vr_menu_distance", "1.5");
+	settings->setDefault("vr_hud_width", "1.5");
+	settings->setDefault("vr_hud_distance", "1.4");
+	settings->setDefault("vr_snap_turn_angle", "30");
+	// Controllers are used as gamepad and mouse, there is no touchscreen
+	settings->setDefault("touch_controls", "false");
+	settings->setDefault("touch_gui", "false");
+	// Moving the camera without head movement causes motion sickness
+	settings->setDefault("view_bobbing_amount", "0");
+	settings->setDefault("fall_bobbing_amount", "0");
+#endif
 }

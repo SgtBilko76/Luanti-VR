@@ -391,6 +391,7 @@ private:
 
 	bool m_touch_simulate_aux1 = false;
 	bool isTouchShootlineUsed() const;
+	bool isVRRunning() const;
 #ifdef __ANDROID__
 	bool m_android_chat_open;
 #endif

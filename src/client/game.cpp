@@ -9,6 +9,7 @@
 #include "client/gameui.h"
 #include "client/inputhandler.h"
 #include "client/texturepaths.h"
+#include "client/vr/vr.h"
 #include "client/keys.h"
 #include "client/mapblock_mesh.h"
 #include "client/sound.h"
@@ -592,7 +593,13 @@ void Game::run()
 		updateFrame(&graph, &stats, dtime, cam_view);
 		updateProfilerGraphs(&graph);
 
-		if (m_does_lost_focus_pause_game && !device->isWindowFocused() && !isMenuActive()) {
+#if USE_OPENXR
+		if (g_vr)
+			g_vr->setUiMode(isMenuActive() ? VrUiMode::Menu : VrUiMode::Hud);
+#endif
+
+		if (m_does_lost_focus_pause_game && !device->isWindowFocused() && !isVRRunning() &&
+				!isMenuActive()) {
 			m_game_formspec.showPauseMenu();
 		}
 	}
@@ -607,8 +614,25 @@ void Game::run()
 }
 
 
+// In VR, the window focus says nothing about what the user sees
+bool Game::isVRRunning() const
+{
+#if USE_OPENXR
+	return g_vr && g_vr->isSessionRunning();
+#else
+	return false;
+#endif
+}
+
 void Game::shutdown()
 {
+#if USE_OPENXR
+	if (g_vr) {
+		g_vr->setUiMode(VrUiMode::Menu);
+		g_vr->setPointerRay({}, false);
+	}
+#endif
+
 	// Delete text and menus first
 	m_game_ui->clearText();
 	m_game_formspec.reset();
@@ -1379,7 +1403,8 @@ void Game::processUserInput(f32 dtime)
 	}
 
 	// Reset input if window not active or some menu is active
-	if (!device->isWindowActive() || isMenuActive() || guienv->hasFocus(gui_chat_console.get())) {
+	if ((!device->isWindowActive() && !isVRRunning()) || isMenuActive() ||
+			guienv->hasFocus(gui_chat_console.get())) {
 		if (m_game_focused) {
 			m_game_focused = false;
 			infostream << "Game lost focus" << std::endl;
@@ -1936,6 +1961,16 @@ void Game::checkZoomEnabled()
 
 void Game::updateCameraDirection(CameraOrientation *cam, float dtime)
 {
+#if USE_OPENXR
+	if (g_vr && g_vr->isSessionRunning()) {
+		// The player looks where the head points
+		v2f yaw_pitch = g_vr->getLookYawPitch();
+		cam->camera_yaw = yaw_pitch.X;
+		cam->camera_pitch = rangelim(yaw_pitch.Y, -90, 90);
+		return;
+	}
+#endif
+
 	auto *cur_control = device->getCursorControl();
 
 	/* On Linux and Windows, enabling relative mouse mode somehow results
@@ -2111,7 +2146,7 @@ inline void Game::step(f32 dtime)
 	ZoneScoped;
 
 	if (server) {
-		float fps_max = !device->isWindowFocused() && simple_singleplayer_mode ?
+		float fps_max = !device->isWindowFocused() && !isVRRunning() && simple_singleplayer_mode ?
 				g_settings->getFloat("fps_max_unfocused") :
 				g_settings->getFloat("fps_max");
 		fps_max = std::max(fps_max, 1.0f);
@@ -2711,11 +2746,40 @@ void Game::processPlayerInteraction(f32 dtime, bool show_hud)
 		shootline.end += intToFloat(camera_offset, BS);
 	}
 
+#if USE_OPENXR
+	bool vr_aiming = false;
+	if (g_vr && g_vr->isSessionRunning() &&
+			camera->getCameraMode() == CAMERA_MODE_FIRST) {
+		// Point with the right controller
+		VrPose aim = g_vr->getAimPose();
+		if (aim.valid) {
+			v3f dir = g_vr->toWorldOrientation(aim.orientation).rotate(v3f(0, 0, 1));
+			shootline.start = camera->getPosition() + g_vr->toWorldOffset(aim.position);
+			shootline.end = shootline.start + dir * BS * std::max(d, 0.0f);
+			vr_aiming = true;
+		}
+	}
+#endif
+
 	PointedThing pointed = updatePointedThing(shootline,
 			selected_def.liquids_pointable,
 			selected_def.pointabilities,
 			!runData.btn_down_for_dig,
 			camera_offset);
+
+#if USE_OPENXR
+	if (g_vr) {
+		core::line3df ray = shootline;
+		if (pointed.type != POINTEDTHING_NOTHING)
+			ray.end = pointed.intersection_point;
+		const v3f offset = intToFloat(camera_offset, BS);
+		ray.start -= offset;
+		ray.end -= offset;
+		// Start the ray slightly in front of the controller
+		ray.start += ray.getVector().normalize() * (0.05f * BS);
+		g_vr->setPointerRay(ray, vr_aiming && show_hud && !isMenuActive());
+	}
+#endif
 
 	if (pointed != runData.pointed_old)
 		infostream << "Pointing at " << pointed.dump() << std::endl;
@@ -3684,6 +3748,8 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 			(this->camera->getCameraMode() != CAMERA_MODE_THIRD_FRONT));
 
 	if (isTouchShootlineUsed())
+		draw_crosshair = false;
+	if (isVRRunning())
 		draw_crosshair = false;
 
 	this->m_rendering_engine->draw_scene(sky_color, this->m_game_ui->m_flags.show_hud,

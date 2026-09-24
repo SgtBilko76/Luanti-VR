@@ -463,6 +463,9 @@ bool COpenGL3DriverBase::beginScene(u16 clearFlag, SColor clearColor, f32 clearD
 	if (ContextManager)
 		ContextManager->activateContext(videoData, true);
 
+	if (FrameHook)
+		FrameHook->onBeginScene();
+
 	clearBuffers(clearFlag, clearColor, clearDepth, clearStencil);
 
 	return true;
@@ -473,6 +476,9 @@ bool COpenGL3DriverBase::endScene()
 	CNullDriver::endScene();
 
 	GL.Flush();
+
+	if (FrameHook && FrameHook->onEndScene())
+		return true;
 
 	if (ContextManager)
 		return ContextManager->swapBuffers();
@@ -1573,9 +1579,31 @@ void COpenGL3DriverBase::draw3DLine(const core::vector3df &start,
 //! the window was resized.
 void COpenGL3DriverBase::OnResize(const core::dimension2d<u32> &size)
 {
+	WindowSize = size;
+	if (ScreenFBO)
+		return;
 	CNullDriver::OnResize(size);
 	CacheHandler->setViewport(0, 0, size.Width, size.Height);
 	Transformation3DChanged = true;
+}
+
+void COpenGL3DriverBase::setScreenOverride(u32 fbo, const core::dimension2d<u32> &size)
+{
+	const bool was_active = ScreenFBO != 0;
+	if (!was_active)
+		WindowSize = ScreenSize;
+	ScreenFBO = fbo;
+
+	const core::dimension2d<u32> &new_size = fbo ? size : WindowSize;
+	if (new_size != ScreenSize) {
+		CNullDriver::OnResize(new_size);
+		Transformation3DChanged = true;
+	}
+
+	if (!CurrentRenderTarget) {
+		CacheHandler->setFBO(ScreenFBO);
+		setViewPortRaw(ScreenSize.Width, ScreenSize.Height);
+	}
 }
 
 //! Returns type of video driver
@@ -1746,7 +1774,7 @@ bool COpenGL3DriverBase::setRenderTargetEx(IRenderTarget *target, u16 clearFlag,
 
 		setViewPortRaw(destRenderTargetSize.Width, destRenderTargetSize.Height);
 	} else {
-		CacheHandler->setFBO(0);
+		CacheHandler->setFBO(ScreenFBO);
 
 		destRenderTargetSize = core::dimension2d<u32>(0, 0);
 

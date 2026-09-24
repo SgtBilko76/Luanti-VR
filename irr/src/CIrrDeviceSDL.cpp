@@ -704,7 +704,12 @@ bool CIrrDeviceSDL::createWindowWithContext()
 		break;
 	case video::EDT_OGLES2:
 	case video::EDT_WEBGL1:
+#ifdef _IRR_ANDROID_PLATFORM_
+		// OpenXR runtimes (standalone VR headsets) require OpenGL ES 3
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+#else
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+#endif
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 		break;

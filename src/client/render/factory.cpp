@@ -10,6 +10,8 @@
 #include "anaglyph.h"
 #include "sidebyside.h"
 #include "client/shadows/dynamicshadowsrender.h"
+#include "client/vr/vr.h"
+#include "client/vr/vr_pipeline.h"
 
 #include <memory>
 
@@ -41,6 +43,13 @@ void createPipeline(const std::string &stereo_mode, IrrlichtDevice *device, Clie
 
 	if (result.shadow_renderer)
 		result.pipeline->addStep<RenderShadowMapStep>();
+
+#if USE_OPENXR
+	if (g_vr) {
+		populateVRPipeline(result.pipeline.get(), client);
+		return;
+	}
+#endif
 
 	if (stereo_mode == "none") {
 		populatePlainPipeline(result.pipeline.get(), client);

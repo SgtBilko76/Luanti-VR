@@ -127,6 +127,29 @@ public:
 	\return False if failed and true if succeeded. */
 	virtual bool endScene() = 0;
 
+	//! Receives notifications about scene begin/end (e.g. for VR runtimes).
+	class IFrameHook
+	{
+	public:
+		virtual ~IFrameHook() = default;
+		//! Called at the start of beginScene(), before the screen is cleared.
+		virtual void onBeginScene() = 0;
+		//! Called in endScene() instead of presenting.
+		/** \return True if the frame was presented by the hook, in which
+		case the window buffers are not swapped. */
+		virtual bool onEndScene() = 0;
+	};
+
+	//! Sets the frame hook. Pass nullptr to remove it.
+	virtual void setFrameHook(IFrameHook *hook) {}
+
+	//! Redirects all rendering that targets the screen to another framebuffer.
+	/** The screen size reported by getScreenSize() changes to the given size
+	while the override is active. Only supported by the OpenGL drivers.
+	\param fbo Native framebuffer object name. 0 disables the override.
+	\param size Size of the framebuffer. */
+	virtual void setScreenOverride(u32 fbo, const core::dimension2d<u32> &size) {}
+
 	//! Queries the features of the driver.
 	/** Returns true if a feature is available
 	\param feature Feature to query.

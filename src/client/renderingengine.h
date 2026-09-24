@@ -134,10 +134,7 @@ public:
 	void initialize(Client *client, Hud *hud);
 	void finalize();
 
-	bool run()
-	{
-		return m_device->run();
-	}
+	bool run();
 
 	// FIXME: this is still global when it shouldn't be
 	static ShadowRenderer *get_shadow_renderer()
@@ -166,6 +163,9 @@ private:
 	v2u32 _getWindowSize() const;
 
 	std::unique_ptr<RenderingCore> core;
+#if USE_OPENXR
+	std::unique_ptr<class VrSystem> m_vr;
+#endif
 	IrrlichtDevice *m_device = nullptr;
 	video::IVideoDriver *driver;
 	MyEventReceiver *m_receiver = nullptr;

@@ -135,6 +135,10 @@ public:
 	//! Only used internally by the engine
 	void OnResize(const core::dimension2d<u32> &size) override;
 
+	void setFrameHook(IFrameHook *hook) override { FrameHook = hook; }
+
+	void setScreenOverride(u32 fbo, const core::dimension2d<u32> &size) override;
+
 	//! Returns type of video driver
 	E_DRIVER_TYPE getDriverType() const override;
 
@@ -305,6 +309,11 @@ protected:
 	void endDraw(const VertexType &vertexType);
 
 	COpenGL3CacheHandler *CacheHandler;
+	IFrameHook *FrameHook = nullptr;
+	//! Framebuffer used in place of the default framebuffer (0 = window)
+	GLuint ScreenFBO = 0;
+	//! Last size reported by the window, restored when the override ends
+	core::dimension2d<u32> WindowSize;
 	core::stringc Name;
 	core::stringc VendorName;
 	SIrrlichtCreationParameters Params;

@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "camera.h"
+#include "client/vr/vr.h"
 #include "client.h"
 #include "clientmap.h"     // MapDrawControl
 #include "localplayer.h"
@@ -496,6 +497,18 @@ void Camera::update(LocalPlayer* player, f32 frametime, f32 tool_reload_ratio)
 	// Increase vertical FOV on lower aspect ratios (<16:10)
 	m_fov_y *= core::clamp(sqrt(16./10. / m_aspect), 1.0, 1.4);
 	m_fov_x = 2 * atan(m_aspect * tan(0.5 * m_fov_y));
+#if USE_OPENXR
+	// The headset decides the FOV. The camera node's projection is replaced
+	// per eye while rendering, but culling uses these values.
+	if (g_vr && g_vr->isSessionRunning()) {
+		v2f fov = g_vr->getCombinedFov();
+		if (fov.X > 0.0f && fov.Y > 0.0f) {
+			m_fov_x = fov.X;
+			m_fov_y = fov.Y;
+			m_aspect = std::tan(0.5f * fov.X) / std::tan(0.5f * fov.Y);
+		}
+	}
+#endif
 	m_cameranode->setAspectRatio(m_aspect);
 	m_cameranode->setFOV(m_fov_y);
 

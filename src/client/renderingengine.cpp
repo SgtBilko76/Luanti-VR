@@ -22,6 +22,7 @@
 #include "renderingengine.h"
 #include "render/core.h"
 #include "render/factory.h"
+#include "vr/vr.h"
 #include "filesys.h"
 #include "irrlicht_changes/static_text.h"
 #include "irr_ptr.h"
@@ -217,6 +218,11 @@ RenderingEngine::RenderingEngine(MyEventReceiver *receiver)
 
 	s_singleton = this;
 
+#if USE_OPENXR
+	m_vr = VrSystem::create(m_device);
+	g_vr = m_vr.get();
+#endif
+
 	g_settings->registerChangedCallback("fullscreen", settingChangedCallback, this);
 	g_settings->registerChangedCallback("window_maximized", settingChangedCallback, this);
 }
@@ -228,6 +234,10 @@ RenderingEngine::~RenderingEngine()
 	g_settings->deregisterAllChangedCallbacks(this);
 
 	core.reset();
+#if USE_OPENXR
+	g_vr = nullptr;
+	m_vr.reset();
+#endif
 	m_device->closeDevice();
 	m_device->drop();
 	s_singleton = nullptr;
@@ -416,6 +426,19 @@ void RenderingEngine::initialize(Client *client, Hud *hud)
 void RenderingEngine::finalize()
 {
 	core.reset();
+}
+
+bool RenderingEngine::run()
+{
+	bool ret = m_device->run();
+#if USE_OPENXR
+	if (m_vr) {
+		m_vr->update();
+		if (m_vr->shouldQuit())
+			m_device->closeDevice();
+	}
+#endif
+	return ret;
 }
 
 void RenderingEngine::draw_scene(video::SColor skycolor, bool show_hud,
