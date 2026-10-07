@@ -611,6 +611,7 @@ void set_default_settings()
 #if USE_OPENXR
 	settings->setDefault("enable_vr", "true");
 	settings->setDefault("vr_resolution_scale", "0.75");
+	settings->setDefault("vr_max_eye_width", "1280");
 	settings->setDefault("vr_msaa", "4");
 	settings->setDefault("vr_ui_width", "1280");
 	settings->setDefault("vr_ui_height", "800");

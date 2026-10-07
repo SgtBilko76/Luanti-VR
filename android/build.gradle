@@ -5,9 +5,9 @@ project.ext.set("versionMinor", 18)     // Version Minor
 project.ext.set("versionPatch", 0)      // Version Patch
 // ^ keep in sync with cmake
 
-project.ext.set("vrVersionName", "0.1.1-beta") // Version of the VR port (Meta Quest / PICO)
+project.ext.set("vrVersionName", "0.1.2-beta") // Version of the VR port (Meta Quest / PICO)
 
-project.ext.set("versionBuild", 1)      // Version Build
+project.ext.set("versionBuild", 2)      // Version Build
 // ^ fourth version number to allow releasing Android-only fixes and beta versions
 
 buildscript {

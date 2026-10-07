@@ -401,6 +401,13 @@ bool OpenXrSystem::init()
 		core::dimension2du size(
 				views[i].recommendedImageRectWidth * scale,
 				views[i].recommendedImageRectHeight * scale);
+		// Newer runtimes recommend very high resolutions; cap the width so
+		// the GPU load stays manageable, keeping the aspect ratio
+		const u32 max_width = std::max<u32>(g_settings->getU32("vr_max_eye_width"), 256);
+		if (size.Width > max_width) {
+			size.Height = (u64)size.Height * max_width / size.Width;
+			size.Width = max_width;
+		}
 		size.Width = std::min(size.Width, views[i].maxImageRectWidth);
 		size.Height = std::min(size.Height, views[i].maxImageRectHeight);
 		if (!createSwapchain(m_eye_sc[i], size, true))
