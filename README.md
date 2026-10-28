@@ -16,6 +16,8 @@ This fork runs Luanti standalone in VR on **Meta Quest** (2, 3, 3S, Pro) and **P
 - VR keyboard for world names, chat and server addresses
 - Smooth movement with the left stick, snap turning with the right stick
 
+![Luanti VR controller mapping](docs/controls.webp)
+
 | Input | In game | In menus |
 |---|---|---|
 | Left stick | Walk | Scroll |
