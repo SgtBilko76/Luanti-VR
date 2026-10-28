@@ -9,6 +9,8 @@
 
 ## Luanti VR (Meta Quest / PICO)
 
+**Download, install guide, controls and pictures: [portroyale.online/luanti.html](https://portroyale.online/luanti.html)**
+
 This fork runs Luanti standalone in VR on **Meta Quest** (2, 3, 3S, Pro) and **PICO** (4, 4 Ultra, Neo 3) headsets, using OpenXR. One APK works on both. Download it from the [releases](https://github.com/SgtBilko76/Luanti-VR/releases). The VR port lives on the `quest-vr` branch.
 
 - Stereo rendering with head tracking, controller aiming with a laser ray
